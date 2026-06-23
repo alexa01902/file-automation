@@ -114,11 +114,11 @@ def extract_pdf_info(doc, args) -> PdfInfo:
 				"""
 
 				if looking_for_end_page:
-					if info.search_word in line.lower():
+					if info.search_word.lower() in line.lower():
 						search_word_found = True
 		
 		if looking_for_end_page:
-			if not info.search_word_found:
+			if not search_word_found:
 				info.end_page = page.number -1
 
 		# if star.page not found also look for word
@@ -286,6 +286,7 @@ def write_summary_to_txt(base_dir, args):
 			existing_serienummer.update(
 				range(0, max_serie_nummer + 1, args.mätfrekvens)
 			)
+			existing_serienummer.add(1)
 
 		if args.add_serienummer is not None:
 			existing_serienummer.update(args.add_serienummer)
