@@ -30,8 +30,8 @@ def check_if_red_text_in_page(page):
 						return True	
 	return False
 
-def extract_pdf_info(doc, search_word) -> PdfInfo:
-	info = PdfInfo(file_path=doc.name, search_word=search_word) 
+def extract_pdf_info(doc, args) -> PdfInfo:
+	info = PdfInfo(file_path=doc.name, search_word=args.search) 
 
 	RELEVANT_PAGE_COUNT = None
 	possible_end_pages = None
@@ -60,7 +60,7 @@ def extract_pdf_info(doc, search_word) -> PdfInfo:
 				#print(f"To.nr.: {info.to_nummer}")
 
 			if info.art_nr is not None and info.serie_nummer is not None and info.search_word is not None and info.start_page is None:
-				if search_word in line.lower():
+				if info.search_word.lower() in line.lower():
 					info.start_page = page.number
 					if page.number == doc.page_count - 1:
 						looking_for_end_page = False
@@ -114,11 +114,11 @@ def extract_pdf_info(doc, search_word) -> PdfInfo:
 				"""
 
 				if looking_for_end_page:
-					if search_word in line.lower():
+					if info.search_word in line.lower():
 						search_word_found = True
 		
 		if looking_for_end_page:
-			if not search_word_found:
+			if not info.search_word_found:
 				info.end_page = page.number -1
 
 		# if star.page not found also look for word
@@ -147,13 +147,13 @@ def extract_pdf_info(doc, search_word) -> PdfInfo:
 		
 	return info
 
-def process_pdf(file_path, search_word):
+def process_pdf(file_path, args):
 
 	# open file 
 	doc = pymupdf.open(file_path)
 
 	# Find information art.nr. and serie_nummer as well as the start page and end page of the relevant information.
-	info = extract_pdf_info(doc, search_word)
+	info = extract_pdf_info(doc, args)
 	file_path_root = os.path.dirname(file_path)
 
 	# See if red text is present in the relevant pages.
@@ -226,7 +226,7 @@ def process_pdf(file_path, search_word):
 	
 	return info # return the info object for the Art.nr. to be used in the summary file
 
-def write_summary_to_txt(base_dir, mätfrekvens):
+def write_summary_to_txt(base_dir, args):
 	
 	# Count number of files in each directory and write to summary file
 	summary_file_path = os.path.join(base_dir, "summary.txt")
@@ -280,7 +280,25 @@ def write_summary_to_txt(base_dir, mätfrekvens):
 	
 	# Check if all numbers from 1 to max_serie_nummer are present in the correct_serienummer_list, if not, write the missing numbers to the summary file.
 	if max_serie_nummer is not None:
-		missing_serienummer = [ num for num in range(0, max_serie_nummer + 1, mätfrekvens) if num not in correct_serienummer_list]
+		existing_serienummer = set()
+
+		if args.mätfrekvens is not None:
+			existing_serienummer.update(
+				range(0, max_serie_nummer + 1, args.mätfrekvens)
+			)
+
+		if args.add_serienummer is not None:
+			existing_serienummer.update(args.add_serienummer)
+
+		if args.mätfrekvens is None and args.add_serienummer is None:
+			existing_serienummer.update(
+				range(1, max_serie_nummer + 1)
+			)
+
+		missing_serienummer = [
+			num for num in existing_serienummer
+			if num not in correct_serienummer_list
+		]
 
 		summary_file.write(f"Missing SerieNummer in Correct folder: "
 					 f"{', '.join(f'{num:04d}' for num in missing_serienummer)}\n")
@@ -307,15 +325,9 @@ def __main__():
 	parser.add_argument("folder_path", type=str, help="Path to the folder containing PDF files")
 	parser.add_argument("-s", "--search", type=str, help="Search word to find relevant pages if page count not availible")
 	parser.add_argument("-m", "--mätfrekvens", type=int, help="Mätfrekvens för att veta relevanta serienummer")
+	parser.add_argument("-a", "--add_serienummer", nargs = "+",  type=int, help="Om du vill lägga till mätpunkt som inte följer mätfrekvensen")
 	args = parser.parse_args()
-	path = args.folder_path
-
-	if args.search is not None:
-		search_word = args.search.lower()
-	else:
-		search_word = args.search
-		
-	mätfrekvens = args.mätfrekvens
+	path = args.folder_path	
 
 	# Iterate through all PDF files in the folder
 	for file_name in os.listdir(path):
@@ -323,13 +335,13 @@ def __main__():
 			file_path = os.path.join(path, file_name)
 			print(f"Processing file: {file_path}")
 			# Call the function to process the PDF file
-			info = process_pdf(file_path, search_word)
+			info = process_pdf(file_path, args)
 			if not info.error:
 				base_dir = info.new_root_dir
 			
 	
 	#subfolder summary in Artn.nr. dir with a text file witht he amount of files in each subfolder
-	write_summary_to_txt(base_dir, mätfrekvens)
+	write_summary_to_txt(base_dir, args)
 
 
 if __name__ == "__main__":
