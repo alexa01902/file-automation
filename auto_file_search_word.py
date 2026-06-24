@@ -30,6 +30,36 @@ def check_if_red_text_in_page(page):
 						return True	
 	return False
 
+import fitz  # PyMuPDF
+import numpy as np
+
+
+def page_has_red_visual(page, zoom=2):
+    """
+    Detects red-ish pixels anywhere on a rendered PDF page.
+    Works for images, vectors, arrows, etc.
+    """
+
+    mat = fitz.Matrix(zoom, zoom)
+    pix = page.get_pixmap(matrix=mat)
+
+    img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(
+        pix.height, pix.width, pix.n
+    )
+
+    # If RGBA, ignore alpha
+    if pix.n == 4:
+        img = img[:, :, :3]
+
+    r = img[:, :, 0]
+    g = img[:, :, 1]
+    b = img[:, :, 2]
+
+    # red pixel heuristic
+    red_mask = (r > 150) & (r > g * 1.3) & (r > b * 1.3)
+
+    return np.any(red_mask)
+
 def extract_pdf_info(doc, args) -> PdfInfo:
 	info = PdfInfo(file_path=doc.name, search_word=args.search) 
 
@@ -86,32 +116,6 @@ def extract_pdf_info(doc, args) -> PdfInfo:
 					else:
 						print("ERROR: Multiple possible page numbers were found")
 						print(f"Possible end page: {page.number} with page number matches: {page_number_match}")
-
-				"""elif info.start_page is not None and info.end_page is None:
-				# This is done if more than one possible end page is found on the start page.
-				# Here we check for page numbers and if they don't match the possible end pages, we remove them from the list of possible end pages. If there is only one possible end page left, we set it as the end page.
-				
-				page_number_match = re.findall(r'\b(\d{1,3})/(\d{1,3})\b', text)
-				#print(page_number_match)
-				if page_number_match:
-
-					for match in page_number_match:
-						page_num = int(match[-1])
-						#print (page_num)
-						for possible_end_page in possible_end_pages:
-							if page_num != possible_end_page:
-								possible_end_pages.remove(possible_end_page)
-								print(f"Removed possible end page: {possible_end_page} based on page number match: {page_num} on page {page.number}")
-								
-							if len(possible_end_pages) == 1:
-								RELEVANT_PAGE_COUNT = possible_end_pages[0]
-								info.end_page = info.start_page + RELEVANT_PAGE_COUNT - 1
-								print(f"Determined end page: {info.end_page} based on remaining possible end pages: {possible_end_pages}")
-								# break all loops
-								break
-					if info.end_page:
-						break
-				"""
 
 				if looking_for_end_page:
 					if info.search_word.lower() in line.lower():
@@ -175,6 +179,12 @@ def process_pdf(file_path, args):
 			info.has_red_text = True
 			#print(f"Red text found on page {page_num}")
 			break
+
+		if args.check_visuals:
+			if page_has_red_visual(page):
+				info.has_red_text = True
+				#print(f"Red text found on page {page_num}")
+				break
 
 	# Create directories if they don't exist, with the name of the Art.nr. and subdirectories "Original", "Error", and "Correct".
 	file_path_root = os.path.dirname(file_path)
@@ -327,6 +337,7 @@ def __main__():
 	parser.add_argument("-s", "--search", type=str, help="Search word to find relevant pages if page count not availible")
 	parser.add_argument("-m", "--mätfrekvens", type=int, help="Mätfrekvens för att veta relevanta serienummer")
 	parser.add_argument("-a", "--add_serienummer", nargs = "+",  type=int, help="Om du vill lägga till mätpunkt som inte följer mätfrekvensen")
+	parser.add_argument("-v", "--check_visuals", action="store_true", help = "True if visuals should also be checked if red")
 	args = parser.parse_args()
 	path = args.folder_path	
 
